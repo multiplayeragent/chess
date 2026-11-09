@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chess</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #1b2233; }
+  body { font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #f4efe6; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; touch-action: none; }
+  .bar { position: fixed; left: max(12px, env(safe-area-inset-left)); display: flex; align-items: center; gap: 9px; padding: 5px 14px 5px 5px; border-radius: 999px;
+         background: #0e1320c4; backdrop-filter: blur(6px); font-weight: 650; max-width: calc(100vw - 150px); transition: box-shadow .25s; white-space: nowrap; }
+  .bar.turn { box-shadow: 0 0 0 2px #ffd166, 0 0 22px #ffd16666; }
+  .bar .sw { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; flex: none; }
+  .bar .nm { overflow: hidden; text-overflow: ellipsis; }
+  .bar .tag { font-size: 12px; font-weight: 600; opacity: .65; }
+  .bar .cap { font-size: 17px; letter-spacing: -3px; }
+  .sw.w { background: #2a2d3a; color: #f3ece0; } .sw.b { background: #f3ece0; color: #2a2d3a; }
+  .cap.w { color: #f3ece0; } .cap.b { color: #2a2d3a; text-shadow: 0 0 1px #fff, 0 0 2px #fffa; }
+  .bar .adv { font-size: 12px; color: #9fe3b0; }
+  #top { top: max(12px, env(safe-area-inset-top)); }
+  #bottom { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 24px); }
+  #status { position: fixed; top: calc(max(12px, env(safe-area-inset-top)) + 54px); left: 0; right: 0; text-align: center; font-weight: 800; font-size: 19px;
+            text-shadow: 0 2px 6px #000c; pointer-events: none; }
+  #toast { position: fixed; top: calc(max(12px, env(safe-area-inset-top)) + 84px); left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px;
+           background: #000a; font-size: 14px; pointer-events: none; transition: opacity .4s; }
+  #watch { position: fixed; top: max(16px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); font-size: 12px; opacity: .75; text-align: right; max-width: 120px; }
+  #net { position: fixed; bottom: max(6px, env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; font-size: 12px; opacity: .7; pointer-events: none; }
+  #act { position: fixed; right: max(12px, env(safe-area-inset-right)); bottom: calc(max(10px, env(safe-area-inset-bottom)) + 22px); min-width: 108px; min-height: 46px;
+         border-radius: 14px; border: 1px solid #ffffff33; background: #ffffff1a; color: #fff; font: 700 15px system-ui, sans-serif; cursor: pointer; }
+  #act.go { background: #ffd166; color: #2a1d00; border: 0; }
+  #act.warn { background: #e2555a; border: 0; }
+  #promo { position: fixed; inset: 0; display: grid; place-items: center; background: #0008; }
+  #promo div { display: flex; gap: 10px; padding: 14px; border-radius: 18px; background: #161d2e; }
+  #promo button { width: 64px; height: 64px; border-radius: 14px; border: 0; background: #f4efe6; font-size: 40px; cursor: pointer; }
+  #over { position: fixed; inset: 0; display: grid; place-items: center; background: #0007; }
+  #over[hidden], #promo[hidden], #act[hidden] { display: none; }
+  .card { width: min(340px, 88vw); max-height: 84vh; overflow: auto; padding: 20px; border-radius: 18px; background: #161d2e; border: 1px solid #ffffff22; text-align: center; }
+  .card h2 { margin: 0; font-size: 26px; } .card p { margin: 4px 0 12px; opacity: .8; }
+  .card h3 { margin: 6px 0 4px; font-size: 13px; color: #ffd166; text-align: left; }
+  .card ol { text-align: left; margin: 0 0 14px; padding-left: 24px; font-size: 14px; min-height: 30px; }
+  .card li span { float: right; }
+  .card button { width: 100%; min-height: 48px; border-radius: 12px; border: 0; font: 700 16px system-ui, sans-serif; cursor: pointer; margin-top: 8px; }
+  #again2 { background: #ffd166; color: #2a1d00; } #look { background: #ffffff1a; color: #fff; }
+  .hide { display: none !important; }
+</style>
+<script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
+<script type="importmap">{ "imports": { "three": "./libs/three.module.min.js" } }</script>
+</head>
+<body>
+<div class="bar" id="top"></div>
+<div class="bar" id="bottom"></div>
+<div id="status"></div>
+<div id="toast" style="opacity:0"></div>
+<div id="watch"></div>
+<button id="act" hidden>Resign</button>
+<div id="net">Connecting…</div>
+<div id="promo" hidden><div><button data-p="q">♕</button><button data-p="r">♖</button><button data-p="b">♗</button><button data-p="n">♘</button></div></div>
+<div id="over" hidden><div class="card">
+  <h2 id="overTitle"></h2><p id="overWhy"></p>
+  <h3>Most wins</h3><ol id="board"><li>Loading…</li></ol>
+  <button id="again2">Play again</button><button id="look">Look at the board</button>
+</div></div>
+<script type="module">
+/* ═══ CHESS · a Multiplayer Agent starter ═════════════════════════════════════════════════
+ * Real rules on a 3D board. Turn-based, 2 players; anyone else watches; a bot plays when you're alone.
+ *
+ * WHERE THINGS ARE (search for the "── " headers):
+ *   CONFIG ........ the bot, timings, colors, the leaderboard
+ *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host
+ *   RULES ......... the chess rules: FEN, legal moves, check, mate, draws, move names
+ *   BOT ........... how the bot picks a move (2 moves deep + captures)
+ *   GAME (HOST) ... seats, checking and applying moves, bot turns, results.
+ *                   Only the host writes the shared `game` field.
+ *   SCENE ......... renderer, lights, the board and its square highlights
+ *   PIECES ........ the low-poly piece models, sliding them, captures, sparks
+ *   MY MOVES ...... selecting a piece, legal-move dots, promotion, sending a move
+ *   HUD & RESULTS . player bars, status, results card, leaderboard
+ *   INPUT / LOOP .. clicks and taps, the camera, the main loop
+ *
+ * HOW THE MULTIPLAYER WORKS (a relay room: no server code):
+ *   - The whole game lives in ONE shared field, `game`: {id, v, fen, ply, last, san, w, b, at,
+ *     res, why, endsAt, rep}. `w`/`b` are the seats: a sessionId or "bot". Only the HOST
+ *     writes it, and `v` goes up on every write.
+ *   - The HOST is the lowest sessionId among live players (heartbeat seen in the last 3s),
+ *     worked out every frame. It checks every move against the rules, plays the bot's moves,
+ *     hands seats to waiting players and ends the game. A new host carries on from `game`.
+ *   - Each player writes its OWN entity: `n` (name), `c` (color), `hb` (heartbeat).
+ *   - Players send intents to the host: "move" {g, ply, f, t, pr}, "resign" {g}, "again" {g}.
+ *     The host never gets its own sends, so it applies its own moves directly.
+ *   - The first two players take the seats. A seat whose player is gone for 10s goes to the
+ *     bot; a waiting player takes a bot's seat, even mid-game.
+ *   - ?attract plays offline, bot against bot (the preview video is recorded from it).
+ *   - Leaderboard "wins": +1 for each game a player wins, shown on the results card.
+ */
+import * as THREE from "three";
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────────────
+const CONFIG = {
+  botName: "Bishop Bot",
+  botThinkMs: 900,      // the bot waits this long before it moves
+  botDepth: 2,          // moves the bot looks ahead (2 = its move and your reply)
+  botCaptures: 3,       // extra captures it follows, so it sees the end of a trade
+  botNoise: 35,         // random wobble in its scores (100 = a pawn), so it isn't perfect
+  seatGraceMs: 10000,   // a seated player silent this long loses the seat to the bot
+  resultsMs: 45000,     // results show this long, then a new game starts (Play again starts it at once)
+  moveMs: 360,          // how long a piece takes to slide
+  light: "#efdcb8", dark: "#a8714a", frame: "#3b2618", // the board
+  whitePiece: "#f3ece0", blackPiece: "#2a2d3a",
+  sky: "#1b2233",
+  board: "wins",        // leaderboard name
+  // ?attract starts from this open position so the preview shows captures quickly
+  attractFen: "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5",
+};
+const COLORS = ["#ff6b6b", "#4dabf7", "#ffd43b", "#69db7c", "#b197fc", "#ff922b", "#f783ac", "#3bc9db"];
+const NAME_A = ["Swift", "Clever", "Bold", "Quiet", "Lucky", "Sly"], NAME_B = ["Rook", "Knight", "Pawn", "Bishop", "Queen"];
+
+// ── CONNECTION ──────────────────────────────────────────────────────────────────────
+// The builder fills these in for this game. Downloaded from GitHub? Put your own pk_ key here.
+const MP_CONNECT = {
+  key: 'pk_REPLACE_ME',
+  room: 'chess',
+  endpoint: 'wss://live.multiplayeragent.com',
+  apiUrl: 'https://api.multiplayeragent.com',
+};
+const ATTRACT = new URLSearchParams(location.search).has("attract");
+
+/** Same shape as the SDK client, kept in this tab: offline play and ?attract. */
+function localRoom() {
+  const id = "local", state = { entities: { players: { [id]: {} } }, shared: {} }, subs = [];
+  let queued = false;
+  const emit = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; subs.forEach((f) => f(state)); }); } };
+  const put = (o, k, v) => { if (typeof k === "object") Object.assign(o, k); else o[k] = v; emit(); };
+  return {
+    sessionId: id, state, offline: true,
+    me: { set: (k, v) => put(state.entities.players[id], k, v) },
+    setShared: (k, v) => put(state.shared, k, v),
+    onState: (f) => { subs.push(f); f(state); }, onJoin() {}, onLeave() {}, on() {}, send() {},
+    onDisconnect() {}, onReconnect() {}, leave: async () => {},
+  };
+}
+async function connect() {
+  if (ATTRACT || typeof MP === "undefined") return localRoom();
+  try {
+    const mp = await Promise.race([MP.join({ ...MP_CONNECT }), new Promise((_, no) => setTimeout(() => no(new Error("timed out")), 10000))]);
+    window.mp = mp; // the builder calls window.mp.leave() when the page closes
+    return mp;
+  } catch (e) {
+    console.warn("Playing offline:", e && e.message);
+    return localRoom();
+  }
+}
+const parse = (v, fb) => { if (typeof v !== "string") return fb; try { return JSON.parse(v); } catch { return fb; } };
+let net = null, S = { entities: { players: {} }, shared: {} };
+const seenHb = new Map();
+function livePlayers() {
+  const now = performance.now(), out = [];
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const s = seenHb.get(id);
+    if (!s || s.hb !== p.hb) seenHb.set(id, { hb: p.hb, at: now });
+    if (id === net.sessionId || now - seenHb.get(id).at < 3000) out.push(id);
+  }
+  return out.sort();
+}
+const isHost = () => livePlayers()[0] === net.sessionId;
+/** Still in the room and heard from within the seat grace time (a backgrounded phone keeps its seat). */
+const stillHere = (id) => id === net.sessionId || (!!S.entities.players[id] && performance.now() - (seenHb.get(id)?.at ?? -1e9) < CONFIG.seatGraceMs);
+
+// ── RULES ───────────────────────────────────────────────────────────────────────────
+// A position: { b: 64 squares, turn: "w"|"b", castle: "KQkq", ep: square or -1, half, full }.
+// Squares: index = rank * 8 + file, a1 = 0, h1 = 7, a8 = 56. Pieces: "PNBRQK" white, "pnbrqk" black, "" empty.
+const FILES = "abcdefgh";
+const sqName = (s) => FILES[s & 7] + ((s >> 3) + 1);
+const sqOf = (n) => FILES.indexOf(n[0]) + (Number(n[1]) - 1) * 8;
+const colorOf = (p) => (!p ? "" : p === p.toUpperCase() ? "w" : "b");
+const other = (c) => (c === "w" ? "b" : "w");
+const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const DIRS = { n: [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]], b: [[1, 1], [1, -1], [-1, 1], [-1, -1]], r: [[1, 0], [-1, 0], [0, 1], [0, -1]] };
+DIRS.q = DIRS.k = [...DIRS.b, ...DIRS.r];
+
+function parseFen(fen) {
+  const [rows, turn, castle, ep, half, full] = fen.split(" "), b = Array(64).fill("");
+  rows.split("/").forEach((row, i) => { let f = 0; for (const ch of row) { if (ch >= "1" && ch <= "8") f += +ch; else b[(7 - i) * 8 + f++] = ch; } });
+  return { b, turn, castle: castle === "-" ? "" : castle, ep: ep === "-" ? -1 : sqOf(ep), half: +half || 0, full: +full || 1 };
+}
+function toFen(pos) {
+  const rows = [];
+  for (let r = 7; r >= 0; r--) {
+    let row = "", empty = 0;
+    for (let f = 0; f < 8; f++) { const p = pos.b[r * 8 + f]; if (!p) empty++; else { row += (empty || "") + p; empty = 0; } }
+    rows.push(row + (empty || ""));
+  }
+  return `${rows.join("/")} ${pos.turn} ${pos.castle || "-"} ${pos.ep >= 0 ? sqName(pos.ep) : "-"} ${pos.half} ${pos.full}`;
+}
+const posCache = new Map();
+/** A FEN as a position, parsed once (read-only: play() always returns a new one). */
+function position(fen) { let p = posCache.get(fen); if (!p) { if (posCache.size > 64) posCache.clear(); p = parseFen(fen); posCache.set(fen, p); } return p; }
+
+/** Is square `sq` attacked by side `by`? */
+function attacked(b, sq, by) {
+  const f = sq & 7, r = sq >> 3;
+  const at = (ff, rr) => (ff >= 0 && ff < 8 && rr >= 0 && rr < 8 ? b[rr * 8 + ff] : null);
+  const is = (p, t) => p && colorOf(p) === by && p.toLowerCase() === t;
+  const pr = by === "w" ? r - 1 : r + 1; // a white pawn attacks from the rank below
+  if (is(at(f - 1, pr), "p") || is(at(f + 1, pr), "p")) return true;
+  for (const [df, dr] of DIRS.n) if (is(at(f + df, r + dr), "n")) return true;
+  for (const [df, dr] of DIRS.k) if (is(at(f + df, r + dr), "k")) return true;
+  for (const [df, dr] of DIRS.q) {
+    for (let k = 1; ; k++) {
+      const p = at(f + df * k, r + dr * k);
+      if (p === null) break;
+      if (p) { const t = p.toLowerCase(); if (colorOf(p) === by && (t === "q" || t === (df && dr ? "b" : "r"))) return true; break; }
+    }
+  }
+  return false;
+}
+const kingOf = (b, c) => b.indexOf(c === "w" ? "K" : "k");
+const inCheck = (pos) => attacked(pos.b, kingOf(pos.b, pos.turn), other(pos.turn));
+
+/** Every move the side to move could make, before checking its own king is safe. */
+function pseudoMoves(pos, capturesOnly) {
+  const out = [], me = pos.turn, b = pos.b;
+  for (let s = 0; s < 64; s++) {
+    const p = b[s];
+    if (!p || colorOf(p) !== me) continue;
+    const t = p.toLowerCase(), f = s & 7, r = s >> 3;
+    if (t === "p") {
+      const dir = me === "w" ? 8 : -8, last = me === "w" ? 7 : 0, add = (to) => { if (to >> 3 === last) for (const pr of "qrbn") out.push({ f: s, t: to, pr }); else out.push({ f: s, t: to }); };
+      if (!capturesOnly && !b[s + dir]) { add(s + dir); if (r === (me === "w" ? 1 : 6) && !b[s + dir * 2]) out.push({ f: s, t: s + dir * 2 }); }
+      for (const df of [-1, 1]) {
+        const to = s + dir + df;
+        if (f + df >= 0 && f + df < 8 && ((b[to] && colorOf(b[to]) !== me) || to === pos.ep)) add(to);
+      }
+      continue;
+    }
+    const slides = t === "b" || t === "r" || t === "q";
+    for (const [df, dr] of DIRS[t]) {
+      for (let nf = f + df, nr = r + dr; nf >= 0 && nf < 8 && nr >= 0 && nr < 8; nf += df, nr += dr) {
+        const to = nr * 8 + nf, q = b[to];
+        if (q && colorOf(q) === me) break;
+        if (q || !capturesOnly) out.push({ f: s, t: to });
+        if (q || !slides) break;
+      }
+    }
+    if (t === "k" && !capturesOnly && s === (me === "w" ? 4 : 60) && !attacked(b, s, other(me))) { // castling
+      const [K, Q] = me === "w" ? ["K", "Q"] : ["k", "q"];
+      if (pos.castle.includes(K) && !b[s + 1] && !b[s + 2] && !attacked(b, s + 1, other(me))) out.push({ f: s, t: s + 2 });
+      if (pos.castle.includes(Q) && !b[s - 1] && !b[s - 2] && !b[s - 3] && !attacked(b, s - 1, other(me))) out.push({ f: s, t: s - 2 });
+    }
+  }
+  return out;
+}
+/** Make a move (it must come from pseudoMoves). Returns a new position; `cap` = the piece taken. */
+function play(pos, m) {
+  const b = pos.b.slice(), p = b[m.f], t = p.toLowerCase(), me = pos.turn;
+  let cap = b[m.t];
+  if (t === "p" && m.t === pos.ep) { cap = b[m.t + (me === "w" ? -8 : 8)]; b[m.t + (me === "w" ? -8 : 8)] = ""; } // en passant
+  b[m.t] = m.pr ? (me === "w" ? m.pr.toUpperCase() : m.pr) : p;
+  b[m.f] = "";
+  if (t === "k" && Math.abs(m.t - m.f) === 2) { const rook = m.t > m.f ? m.f + 3 : m.f - 4; b[(m.f + m.t) / 2] = b[rook]; b[rook] = ""; }
+  let castle = pos.castle;
+  for (const [sq, lost] of [[4, "KQ"], [0, "Q"], [7, "K"], [60, "kq"], [56, "q"], [63, "k"]]) if (m.f === sq || m.t === sq) castle = [...castle].filter((c) => !lost.includes(c)).join("");
+  return { b, turn: other(me), castle, ep: t === "p" && Math.abs(m.t - m.f) === 16 ? (m.f + m.t) / 2 : -1, half: t === "p" || cap ? 0 : pos.half + 1, full: pos.full + (me === "b" ? 1 : 0), cap };
+}
+/** Legal moves: the ones that don't leave your own king in check. */
+const legalMoves = (pos, capturesOnly) => pseudoMoves(pos, capturesOnly).filter((m) => { const n = play(pos, m); return !attacked(n.b, kingOf(n.b, pos.turn), n.turn); });
+const uci = (m) => sqName(m.f) + sqName(m.t) + (m.pr || "");
+
+/** The move's name in normal chess notation, e.g. "Nf3", "exd5", "O-O", "e8=Q#". */
+function sanOf(pos, m, legal) {
+  const p = pos.b[m.f].toLowerCase(), next = play(pos, m);
+  let s;
+  if (p === "k" && Math.abs(m.t - m.f) === 2) s = m.t > m.f ? "O-O" : "O-O-O";
+  else if (p === "p") s = (next.cap ? FILES[m.f & 7] + "x" : "") + sqName(m.t) + (m.pr ? "=" + m.pr.toUpperCase() : "");
+  else {
+    const twins = legal.filter((o) => o.t === m.t && o.f !== m.f && pos.b[o.f] === pos.b[m.f]);
+    const dis = !twins.length ? "" : !twins.some((o) => (o.f & 7) === (m.f & 7)) ? FILES[m.f & 7] : !twins.some((o) => o.f >> 3 === m.f >> 3) ? String((m.f >> 3) + 1) : sqName(m.f);
+    s = p.toUpperCase() + dis + (next.cap ? "x" : "") + sqName(m.t);
+  }
+  return s + (inCheck(next) ? (legalMoves(next).length ? "+" : "#") : "");
+}
+/** Repetition key: the position without the move counters, hashed short. */
+function repKey(fen) { let h = 2166136261; for (const ch of fen.split(" ").slice(0, 4).join(" ")) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0).toString(36); }
+/** Is the game over after this move? { res: "w"|"b"|"d", why } or null. */
+function outcome(pos, rep) {
+  if (!legalMoves(pos).length) return inCheck(pos) ? { res: other(pos.turn), why: "Checkmate" } : { res: "d", why: "Stalemate" };
+  const rest = pos.b.filter((p) => p && p.toLowerCase() !== "k");
+  if (!rest.length || (rest.length === 1 && "nb".includes(rest[0].toLowerCase()))) return { res: "d", why: "Not enough pieces to mate" };
+  if (pos.half >= 100) return { res: "d", why: "Fifty moves without a capture" };
+  if (rep.filter((k) => k === rep[rep.length - 1]).length >= 3) return { res: "d", why: "Same position three times" };
+  return null;
+}
+
+// ── BOT ─────────────────────────────────────────────────────────────────────────────
+const VALUE = { p: 100, n: 310, b: 330, r: 500, q: 900, k: 0 };
+/** Material plus a little position: centre the knights and bishops, push pawns, tuck the king. + is good for white. */
+function evaluate(b) {
+  let s = 0;
+  for (let i = 0; i < 64; i++) {
+    const p = b[i];
+    if (!p) continue;
+    const t = p.toLowerCase(), white = p !== t, f = i & 7, r = white ? i >> 3 : 7 - (i >> 3); // r = ranks from home
+    const centre = 3.5 - Math.max(Math.abs(f - 3.5), Math.abs(r - 3.5)); // 0 on the edge, 3 in the middle
+    let v = VALUE[t];
+    if (t === "p") v += r * r * 2 + (f > 1 && f < 6 ? r * 4 : 0);
+    else if (t === "n" || t === "b") v += centre * 12 - (r === 0 ? 12 : 0);
+    else if (t === "q") v += centre * 3;
+    else if (t === "r") v += r === 6 ? 22 : 0;
+    else if (t === "k") v += r === 0 ? (f < 3 || f > 5 ? 28 : 0) : -18 * r;
+    s += white ? v : -v;
+  }
+  return s;
+}
+function negamax(pos, depth, alpha, beta, ply) {
+  if (depth <= 0) return captures(pos, alpha, beta, 0, ply);
+  const moves = legalMoves(pos);
+  if (!moves.length) return inCheck(pos) ? -100000 + ply : 0;
+  moves.sort((x, y) => VALUE[(pos.b[y.t] || "k").toLowerCase()] - VALUE[(pos.b[x.t] || "k").toLowerCase()]); // captures first
+  for (const m of moves) {
+    const v = -negamax(play(pos, m), depth - 1, -beta, -alpha, ply + 1);
+    if (v >= beta) return v;
+    if (v > alpha) alpha = v;
+  }
+  return alpha;
+}
+/** Follow captures only, so the bot doesn't stop counting halfway through a trade. */
+function captures(pos, alpha, beta, d, ply) {
+  if (d === 0 && inCheck(pos) && !legalMoves(pos).length) return -100000 + ply; // mated
+  const stand = (pos.turn === "w" ? 1 : -1) * evaluate(pos.b);
+  if (stand >= beta || d >= CONFIG.botCaptures) return stand;
+  if (stand > alpha) alpha = stand;
+  for (const m of legalMoves(pos, true)) {
+    const v = -captures(play(pos, m), -beta, -alpha, d + 1, ply + 1);
+    if (v >= beta) return v;
+    if (v > alpha) alpha = v;
+  }
+  return alpha;
+}
+function botMove(pos) {
+  let best = null, bestScore = -Infinity;
+  for (const m of legalMoves(pos)) {
+    const s = -negamax(play(pos, m), CONFIG.botDepth - 1, -Infinity, Infinity, 1) + Math.random() * CONFIG.botNoise;
+    if (s > bestScore) { bestScore = s; best = m; }
+  }
+  return best && { ...best, pr: best.pr ? "q" : "" };
+}
+
+// ── GAME (HOST) ─────────────────────────────────────────────────────────────────────
+const host = { last: null };
+const gameMemo = { raw: undefined, g: null };
+/** The game as state has it, or the host's own newer write that hasn't come back yet. */
+function game() {
+  if (gameMemo.raw !== S.shared.game) { gameMemo.raw = S.shared.game; gameMemo.g = parse(S.shared.game, null); }
+  const g = gameMemo.g;
+  return host.last && isHost() && (!g || host.last.v > g.v) ? host.last : g;
+}
+function writeGame(g) { g = { ...g, v: (game()?.v ?? 0) + 1 }; host.last = g; net.setShared("game", JSON.stringify(g)); return g; }
+const freshGame = (id, w, b) => ({ id, fen: ATTRACT ? CONFIG.attractFen : START, ply: 0, last: "", san: "", w, b, at: Date.now(), res: "", why: "", endsAt: 0, rep: [] });
+
+/** Gone players lose their seat to the bot; waiting players take a bot's seat. */
+function fixSeats(g) {
+  if (ATTRACT) return g;
+  const seats = { w: g.w, b: g.b }, waiting = livePlayers().filter((id) => id !== g.w && id !== g.b);
+  for (const c of ["w", "b"]) if (seats[c] !== "bot" && !stillHere(seats[c])) seats[c] = "bot";
+  for (const c of ["w", "b"]) if (seats[c] === "bot" && waiting.length) seats[c] = waiting.shift();
+  return seats.w === g.w && seats.b === g.b ? g : writeGame({ ...g, ...seats });
+}
+
+/** Check a move against the rules and write the new position (and the result, if it ends the game). */
+function applyMove(g, m) {
+  const pos = position(g.fen), legal = legalMoves(pos);
+  const mv = legal.find((x) => x.f === m.f && x.t === m.t && (x.pr || "") === (m.pr || ""));
+  if (!mv) return false; // illegal: refused
+  const next = play(pos, mv), fen = toFen(next), key = repKey(fen);
+  const rep = next.half === 0 ? [key] : [...g.rep, key].slice(-100);
+  const out = { ...g, fen, ply: g.ply + 1, last: uci(mv), san: sanOf(pos, mv, legal), at: Date.now(), rep };
+  const end = outcome(next, rep);
+  if (end) Object.assign(out, end, { endsAt: Date.now() + CONFIG.resultsMs });
+  writeGame(out);
+  return true;
+}
+/** A "move" intent (or the host's own move): only from the seat whose turn it is, on this exact ply. */
+function hostMove(from, m) {
+  const g = game();
+  if (!g || g.res || m.g !== g.id || m.ply !== g.ply || g[position(g.fen).turn] !== from) return;
+  applyMove(g, m);
+}
+function hostResign(from, m) {
+  const g = game();
+  if (!g || g.res || m.g !== g.id) return;
+  const side = g.w === from ? "w" : g.b === from ? "b" : "";
+  if (side) writeGame({ ...g, res: other(side), why: (side === "w" ? "White" : "Black") + " resigned", endsAt: Date.now() + CONFIG.resultsMs });
+}
+/** Play again: a new game with the colors swapped. */
+function hostAgain(from, m) {
+  const g = game();
+  if (g && g.res && m.g === g.id && (g.w === from || g.b === from)) writeGame(freshGame(g.id + 1, g.b, g.w));
+}
+function hostTick() {
+  let g = game();
+  if (!g) g = writeGame(freshGame(1, ATTRACT ? "bot" : net.sessionId, "bot"));
+  g = fixSeats(g);
+  if (g.res) { if (Date.now() > g.endsAt) writeGame(freshGame(g.id + 1, g.b, g.w)); return; }
+  const pos = position(g.fen);
+  if (g[pos.turn] === "bot" && Date.now() > g.at + CONFIG.botThinkMs) {
+    const m = botMove(pos);
+    if (m) applyMove(g, m);
+  }
+}
+
+// ── SCENE ───────────────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(CONFIG.sky);
+scene.fog = new THREE.Fog(CONFIG.sky, 22, 46);
+const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+function fit() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener("resize", fit); addEventListener("orientationchange", fit); fit();
+scene.add(new THREE.HemisphereLight("#dfe7ff", "#3b2a20", 1.25));
+const sun = new THREE.DirectionalLight("#fff0d8", 2.3);
+sun.position.set(-5, 11, 6); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -0.0005;
+Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 2, far: 30 });
+scene.add(sun);
+
+function canvasTex(w, h, paint) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; paint(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+// The table: a pool of warm light under the board.
+const tableTex = canvasTex(256, 256, (c, w) => { const g = c.createRadialGradient(w / 2, w / 2, 10, w / 2, w / 2, w / 2); g.addColorStop(0, "#5a4a3c"); g.addColorStop(1, CONFIG.sky); c.fillStyle = g; c.fillRect(0, 0, w, w); });
+const table = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ map: tableTex, roughness: 1 }));
+table.rotation.x = -Math.PI / 2; table.position.y = -0.42; table.receiveShadow = true; scene.add(table);
+// The board: a wooden block, and one texture with the squares and the a–h / 1–8 labels.
+const block = new THREE.Mesh(new THREE.BoxGeometry(9.3, 0.4, 9.3), new THREE.MeshStandardMaterial({ color: CONFIG.frame, roughness: 0.6 }));
+block.position.y = -0.21; block.castShadow = block.receiveShadow = true; scene.add(block);
+const boardTex = canvasTex(900, 900, (c) => {
+  c.fillStyle = CONFIG.frame; c.fillRect(0, 0, 900, 900);
+  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) { c.fillStyle = (f + r) % 2 ? CONFIG.light : CONFIG.dark; c.fillRect(50 + f * 100, 50 + (7 - r) * 100, 100, 100); }
+  c.fillStyle = "#e8d2b0"; c.font = "bold 26px system-ui"; c.textAlign = "center"; c.textBaseline = "middle";
+  const label = (text, x, y, flip) => { c.save(); c.translate(x, y); if (flip) c.rotate(Math.PI); c.fillText(text, 0, 0); c.restore(); };
+  for (let i = 0; i < 8; i++) { // upright from white's side, and again from black's
+    label(FILES[i], 100 + i * 100, 875); label(String(8 - i), 25, 100 + i * 100);
+    label(FILES[i], 100 + i * 100, 25, true); label(String(8 - i), 875, 100 + i * 100, true);
+  }
+});
+const boardTop = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.55 }));
+boardTop.rotation.x = -Math.PI / 2; boardTop.position.y = 0.002; boardTop.receiveShadow = true; scene.add(boardTop);
+const sqPos = (s) => new THREE.Vector3((s & 7) - 3.5, 0, 3.5 - (s >> 3));
+
+/** A flat square overlay (last move, selection, check). */
+function overlay(color, opacity, map) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color, opacity, transparent: true, depthWrite: false, map }));
+  m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m); return m;
+}
+const glow = canvasTex(128, 128, (c) => { const g = c.createRadialGradient(64, 64, 4, 64, 64, 64); g.addColorStop(0, "#fff"); g.addColorStop(1, "#fff0"); c.fillStyle = g; c.fillRect(0, 0, 128, 128); });
+const marks = { from: overlay("#ffe066", 0.45), to: overlay("#ffe066", 0.55), sel: overlay("#7bed9f", 0.55), check: overlay("#ff3b3b", 0.95, glow) };
+function putMark(m, sq, y = 0.004) { m.visible = sq >= 0; if (sq >= 0) m.position.copy(sqPos(sq)).setY(y); }
+// Legal-move dots (empty squares) and rings (captures).
+const dotMat = new THREE.MeshBasicMaterial({ color: "#14301e", transparent: true, opacity: 0.38, depthWrite: false });
+const dots = new THREE.InstancedMesh(new THREE.CircleGeometry(0.15, 24).rotateX(-Math.PI / 2), dotMat, 32);
+const rings = new THREE.InstancedMesh(new THREE.RingGeometry(0.38, 0.47, 32).rotateX(-Math.PI / 2), dotMat, 16);
+dots.count = rings.count = 0; scene.add(dots, rings);
+
+// ── PIECES ──────────────────────────────────────────────────────────────────────────
+const pieceMat = { w: new THREE.MeshStandardMaterial({ color: CONFIG.whitePiece, roughness: 0.4, metalness: 0.05 }), b: new THREE.MeshStandardMaterial({ color: CONFIG.blackPiece, roughness: 0.32, metalness: 0.1 }) };
+const lathe = (pts) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 28);
+const ball = (r, y) => new THREE.SphereGeometry(r, 20, 14).translate(0, y, 0);
+const BASE = [[0, 0], [0.36, 0], [0.37, 0.05], [0.33, 0.09], [0.3, 0.1], [0.3, 0.13], [0.25, 0.16]];
+const ringOf = (n, r, y, make) => Array.from({ length: n }, (_, i) => { const a = (i / n) * Math.PI * 2; return make(a).translate(Math.sin(a) * r, y, Math.cos(a) * r); });
+function knightHead() {
+  const pts = [[-0.2, 0.15], [0.18, 0.15], [0.12, 0.34], [0.3, 0.45], [0.34, 0.56], [0.25, 0.63], [0.07, 0.7], [0.05, 0.83], [-0.04, 0.76], [-0.17, 0.71], [-0.25, 0.52], [-0.23, 0.3]];
+  const s = new THREE.Shape(); s.moveTo(...pts[0]); for (const p of pts.slice(1)) s.lineTo(...p); s.closePath();
+  return new THREE.ExtrudeGeometry(s, { depth: 0.18, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.035, bevelSegments: 2 }).translate(0, 0, -0.09).rotateY(Math.PI / 2); // nose toward -z
+}
+/** Each piece: a list of geometries (lathe bodies plus a few primitives). */
+const SHAPES = {
+  p: [lathe([...BASE, [0.2, 0.2], [0.13, 0.36], [0.11, 0.43], [0.19, 0.46], [0.19, 0.49], [0.1, 0.51], [0, 0.51]]), ball(0.15, 0.62)],
+  r: [lathe([...BASE, [0.26, 0.2], [0.21, 0.26], [0.2, 0.56], [0.28, 0.61], [0.28, 0.72], [0.19, 0.72], [0.19, 0.66], [0, 0.66]]),
+      ...ringOf(4, 0.235, 0.77, (a) => new THREE.BoxGeometry(0.15, 0.11, 0.09).rotateY(a))],
+  n: [lathe([...BASE, [0.25, 0.2], [0, 0.2]]), knightHead()],
+  b: [lathe([...BASE, [0.24, 0.2], [0.14, 0.32], [0.11, 0.52], [0.19, 0.55], [0.19, 0.58], [0.1, 0.6], [0.15, 0.67], [0.17, 0.75], [0.13, 0.85], [0.06, 0.91], [0, 0.93]]), ball(0.055, 0.95)],
+  q: [lathe([...BASE, [0.26, 0.2], [0.15, 0.34], [0.11, 0.62], [0.21, 0.66], [0.21, 0.69], [0.12, 0.72], [0.17, 0.8], [0.23, 0.92], [0.17, 0.93], [0.09, 0.9], [0, 0.93]]),
+      ...ringOf(8, 0.21, 0.94, () => new THREE.SphereGeometry(0.045, 10, 8)), ball(0.075, 1.0)],
+  k: [lathe([...BASE, [0.27, 0.2], [0.16, 0.36], [0.12, 0.66], [0.22, 0.7], [0.22, 0.73], [0.13, 0.76], [0.18, 0.86], [0.21, 0.98], [0.11, 1.02], [0, 1.03]]),
+      new THREE.BoxGeometry(0.07, 0.26, 0.07).translate(0, 1.15, 0), new THREE.BoxGeometry(0.2, 0.07, 0.07).translate(0, 1.17, 0)],
+};
+const views = Array(64).fill(null); // square -> { g, p, sq }: the pieces as drawn
+function makePiece(p, sq) {
+  const g = new THREE.Group(), c = colorOf(p);
+  for (const geo of SHAPES[p.toLowerCase()]) { const m = new THREE.Mesh(geo, pieceMat[c]); m.castShadow = true; g.add(m); }
+  g.rotation.y = (c === "b" ? Math.PI : 0) + (p.toLowerCase() === "n" ? 0.6 : 0); // knights face the other side, turned a little to show their profile
+  g.position.copy(sqPos(sq)); g.userData.sq = sq;
+  scene.add(g);
+  return { g, p, sq };
+}
+const anims = [], dying = [];
+const ease = (k) => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2);
+/** Slide (knights hop) a piece to a square. */
+function slide(v, to, delay = 0) {
+  for (let i = anims.length - 1; i >= 0; i--) if (anims[i].v === v) anims.splice(i, 1);
+  const a = v.g.position.clone(), b = sqPos(to), d = a.distanceTo(b);
+  v.sq = v.g.userData.sq = to;
+  anims.push({ v, a, b, t0: performance.now() + delay, ms: CONFIG.moveMs * (0.8 + Math.min(1, d / 5) * 0.5), h: v.p.toLowerCase() === "n" ? 0.8 : 0.1 + d * 0.03 });
+}
+/** Show a position. Same game: slide what moved, knock out what was taken. New game: drop every piece in. */
+function showPosition(fen, last, animate) {
+  const b = position(fen).b, now = performance.now();
+  if (!animate) {
+    for (let s = 0; s < 64; s++) if (views[s]) { scene.remove(views[s].g); views[s] = null; }
+    anims.length = 0;
+    for (let s = 0; s < 64; s++) if (b[s]) { const v = (views[s] = makePiece(b[s], s)); v.g.position.y = 6; slide(v, s, (s % 8) * 30 + (s >> 3) * 25); }
+    return;
+  }
+  let moved = -1, took = false;
+  if (last) { // the move itself first, so a capture on the target square isn't mistaken for it
+    const f = sqOf(last.slice(0, 2)), t = sqOf(last.slice(2, 4));
+    if (views[f] && b[t] && colorOf(views[f].p) === colorOf(b[t])) {
+      if (views[t]) { kill(views[t], CONFIG.moveMs * 0.8); took = true; }
+      views[t] = views[f]; views[f] = null; slide(views[t], t); moved = t;
+    }
+  }
+  const gone = [];
+  for (let s = 0; s < 64; s++) {
+    const v = views[s];
+    if (!v || v.p === b[s]) continue;
+    if (s === moved && colorOf(v.p) === colorOf(b[s])) { promote(v, b[s]); continue; }
+    views[s] = null; gone.push(v);
+  }
+  for (let s = 0; s < 64; s++) if (b[s] && !views[s]) { // the castling rook, or anything else that moved
+    const i = gone.findIndex((v) => v.p === b[s]);
+    if (i >= 0) { views[s] = gone.splice(i, 1)[0]; slide(views[s], s, 80); } else { views[s] = makePiece(b[s], s); views[s].g.position.y = 4; slide(views[s], s); }
+  }
+  for (const v of gone) { kill(v, CONFIG.moveMs * 0.8); took = true; } // en passant
+  sound(inCheck(position(fen)) ? "check" : took ? "take" : "move");
+}
+function promote(v, p) { // swap the pawn for its new piece when it lands
+  const at = v.g.position.clone(), sq = v.sq;
+  setTimeout(() => { if (views[sq] !== v) return; scene.remove(v.g); const n = makePiece(p, sq); n.g.position.copy(at); views[sq] = n; slide(n, sq); burst(sqPos(sq), "#ffe066", 26); }, CONFIG.moveMs);
+}
+function kill(v, delay) { dying.push({ v, t0: performance.now() + delay }); }
+// Sparks: small cubes that fly off a captured piece.
+const sparks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), new THREE.MeshBasicMaterial(), 120);
+sparks.count = 120; scene.add(sparks);
+const parts = [], tmp = new THREE.Object3D(), tmpColor = new THREE.Color();
+for (let i = 0; i < 120; i++) { parts.push({ p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0 }); sparks.setColorAt(i, tmpColor.set("#fff")); }
+let nextPart = 0;
+function burst(at, color, n = 18) {
+  for (let i = 0; i < n; i++) {
+    const q = parts[nextPart = (nextPart + 1) % parts.length];
+    q.p.copy(at).setY(0.4); q.v.set((Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4); q.life = 0.7 + Math.random() * 0.4;
+    sparks.setColorAt(nextPart, tmpColor.set(color));
+  }
+  sparks.instanceColor.needsUpdate = true;
+}
+function tickPieces(now, dt) {
+  for (let i = anims.length - 1; i >= 0; i--) {
+    const an = anims[i], k = Math.max(0, Math.min(1, (now - an.t0) / an.ms)), e = ease(k);
+    an.v.g.position.lerpVectors(an.a, an.b, e); an.v.g.position.y = an.a.y * (1 - e) + Math.sin(k * Math.PI) * an.h;
+    if (k >= 1) anims.splice(i, 1);
+  }
+  for (let i = dying.length - 1; i >= 0; i--) {
+    const d = dying[i], k = (now - d.t0) / 450;
+    if (k < 0) continue;
+    if (!d.burst) { d.burst = true; burst(d.v.g.position, colorOf(d.v.p) === "w" ? CONFIG.whitePiece : "#8f96b8"); }
+    d.v.g.scale.setScalar(Math.max(0.001, 1 - k)); d.v.g.position.y = k * 0.6; d.v.g.rotation.z = k * 2;
+    if (k >= 1) { scene.remove(d.v.g); dying.splice(i, 1); }
+  }
+  for (let i = 0; i < parts.length; i++) {
+    const q = parts[i];
+    if (q.life > 0) { q.life -= dt; q.v.y -= 9 * dt; q.p.addScaledVector(q.v, dt); if (q.p.y < 0.03) { q.p.y = 0.03; q.v.multiplyScalar(0.5); q.v.y *= -0.4; } }
+    tmp.position.copy(q.p); tmp.scale.setScalar(q.life > 0 ? Math.min(1, q.life * 2) : 0); tmp.rotation.set(q.life * 7, q.life * 5, 0); tmp.updateMatrix();
+    sparks.setMatrixAt(i, tmp.matrix);
+  }
+  sparks.instanceMatrix.needsUpdate = true;
+}
+let actx = null; // sounds start after the first tap (browsers require it)
+addEventListener("pointerdown", () => { if (!actx) try { actx = new AudioContext(); } catch {} });
+function sound(kind) {
+  if (!actx || ATTRACT) return;
+  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  o.type = kind === "check" ? "sine" : "triangle";
+  o.frequency.setValueAtTime(kind === "check" ? 660 : kind === "take" ? 200 : 330, t);
+  o.frequency.exponentialRampToValueAtTime(kind === "check" ? 990 : 80, t + 0.14);
+  g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + (kind === "check" ? 0.4 : 0.16));
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.45);
+}
+
+// ── MY MOVES ────────────────────────────────────────────────────────────────────────
+let selected = -1, targets = [], pending = null, hintUntil = performance.now() + 12000;
+const mySeat = (g) => (g.w === net.sessionId ? "w" : g.b === net.sessionId ? "b" : "");
+const myTurn = (g) => !g.res && !pending && mySeat(g) === position(g.fen).turn;
+function select(sq) {
+  const g = game(), old = selected >= 0 && views[selected];
+  if (old && !anims.some((a) => a.v === old)) old.g.position.y = 0; // put the lifted piece back down
+  selected = sq; targets = sq >= 0 && g ? legalMoves(position(g.fen)).filter((m) => m.f === sq) : [];
+  putMark(marks.sel, sq, 0.005);
+  let d = 0, r = 0;
+  for (const m of targets) {
+    if (m.pr && m.pr !== "q") continue; // one marker per promotion square
+    tmp.position.copy(sqPos(m.t)).setY(0.006); tmp.scale.setScalar(1); tmp.rotation.set(0, 0, 0); tmp.updateMatrix();
+    if (position(g.fen).b[m.t] || (m.t === position(g.fen).ep && position(g.fen).b[m.f].toLowerCase() === "p")) rings.setMatrixAt(r++, tmp.matrix); else dots.setMatrixAt(d++, tmp.matrix);
+  }
+  dots.count = d; rings.count = r; dots.instanceMatrix.needsUpdate = rings.instanceMatrix.needsUpdate = true;
+}
+function tapSquare(sq) {
+  const g = game();
+  if (!g || !myTurn(g) || sq < 0) return select(-1);
+  const pos = position(g.fen), m = targets.find((x) => x.t === sq);
+  if (m) return m.pr ? askPromotion(targets.filter((x) => x.t === sq)) : sendMove(m);
+  select(pos.b[sq] && colorOf(pos.b[sq]) === pos.turn && sq !== selected ? sq : -1);
+}
+function askPromotion(moves) {
+  $("promo").hidden = false;
+  for (const b of $("promo").querySelectorAll("button")) b.onclick = () => { $("promo").hidden = true; sendMove(moves.find((m) => m.pr === b.dataset.p)); };
+}
+function sendMove(m) {
+  const g = game(), msg = { g: g.id, ply: g.ply, f: m.f, t: m.t, pr: m.pr || "" };
+  hintUntil = 0; select(-1);
+  if (isHost()) return hostMove(net.sessionId, msg);
+  net.send("move", msg);
+  pending = { fen: g.fen, next: toFen(play(position(g.fen), m)), last: uci(m), at: performance.now() }; // shown until the host answers
+}
+
+// ── HUD & RESULTS ───────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const GLYPH = { p: "♟︎", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" }; // filled shapes, colored per side
+const nameOf = (id) => (id === "bot" ? CONFIG.botName : id === net.sessionId ? myName : S.entities.players[id]?.n || "Player");
+const colorName = (c) => (c === "w" ? "White" : "Black");
+/** The pieces each side has taken, worked out from what is missing from the board. */
+function taken(b, side) {
+  const left = {}, foe = other(side); let out = "", score = 0;
+  for (const p of b) if (p && colorOf(p) === foe) left[p.toLowerCase()] = (left[p.toLowerCase()] || 0) + 1;
+  for (const [t, n] of [["q", 1], ["r", 2], ["b", 2], ["n", 2], ["p", 8]]) { const k = Math.max(0, n - (left[t] || 0)); out += GLYPH[t].repeat(k); score += k * VALUE[t]; }
+  return { out, score };
+}
+function bar(el, side, g, pos) {
+  const id = g[side], t = taken(pos.b, side), lead = Math.round((t.score - taken(pos.b, other(side)).score) / 100);
+  const col = id === "bot" ? "#8892b0" : id === net.sessionId ? myColor : S.entities.players[id]?.c || "#ccc";
+  el.className = "bar" + (!g.res && pos.turn === side ? " turn" : "");
+  const html = `<span class="sw ${side}" style="box-shadow:0 0 0 3px ${esc(col)}">${GLYPH.k}</span>` +
+    `<span class="nm">${esc(nameOf(id))}</span><span class="tag">${id === "bot" ? "bot" : id === net.sessionId ? "you" : ""}</span>` +
+    `<span class="cap ${other(side)}">${t.out}</span>${lead > 0 ? `<span class="adv">+${lead}</span>` : ""}`;
+  if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+}
+let seatsSeen = null, toastAt = 0, dropped = false, resign = 0, resultsFor = -1, closedFor = -1, board = null;
+function toast(text) { $("toast").textContent = text; $("toast").style.opacity = 1; toastAt = performance.now(); }
+function hud(g) {
+  const pos = position(shownFen()), side = mySeat(g), bottom = side || "w", now = performance.now();
+  if (now - toastAt > 3000) $("toast").style.opacity = 0;
+  if (ATTRACT) { for (const id of ["top", "bottom", "status", "watch", "net"]) $(id).classList.add("hide"); return; }
+  bar($("bottom"), bottom, g, pos); bar($("top"), other(bottom), g, pos);
+  // seat changes: someone took over from the bot, or the bot took over
+  const prev = seatsSeen;
+  seatsSeen = { id: g.id, w: g.w, b: g.b };
+  if (prev && prev.id === g.id) for (const c of ["w", "b"]) if (prev[c] !== g[c]) toast(`${g[c] === net.sessionId ? "You" : nameOf(g[c])} took over ${colorName(c).toLowerCase()}`);
+  // status line
+  const turnId = g[pos.turn], check = inCheck(pos) ? "Check! " : "";
+  $("status").textContent = g.res ? (g.res === "d" ? "Draw" : `${colorName(g.res)} wins`) + ` · ${g.why}`
+    : pending ? "Sending your move…"
+    : side === pos.turn ? check + "Your move" + (now < hintUntil ? " · tap a piece, then a dot" : "")
+    : turnId === "bot" ? check + `${CONFIG.botName} is thinking…`
+    : side ? check + `${nameOf(turnId)} to move` : check + `${colorName(pos.turn)} to move · you're watching`;
+  const watchers = livePlayers().filter((id) => id !== g.w && id !== g.b);
+  $("watch").textContent = watchers.length ? "Watching: " + watchers.map((id) => (id === net.sessionId ? "you" : nameOf(id))).join(", ") : "";
+  // the action button: resign during the game, play again after it
+  const act = $("act");
+  act.hidden = !side;
+  if (g.res) { act.textContent = "Play again"; act.className = "go"; }
+  else { act.textContent = now - resign < 3000 ? "Tap to confirm" : "Resign"; act.className = now - resign < 3000 ? "warn" : ""; }
+  // results card
+  if (g.res && resultsFor !== g.id) showResults(g, side);
+  $("over").hidden = !g.res || closedFor === g.id;
+  const n = livePlayers().length;
+  $("net").textContent = net.offline ? "Offline: playing with bots" : dropped ? "Reconnecting…" : `Online · ${n} player${n === 1 ? "" : "s"}${isHost() ? " · you run the game" : ""}`;
+}
+function showResults(g, side) {
+  resultsFor = g.id;
+  const won = side && g.res === side;
+  $("overTitle").textContent = g.res === "d" ? "Draw" : won ? "You win!" : side ? "You lose" : `${colorName(g.res)} wins`;
+  $("overWhy").textContent = g.why + (g.san ? ` · last move ${g.san}` : "");
+  $("again2").classList.toggle("hide", !side);
+  if (won) burst(new THREE.Vector3(0, 0.5, 0), "#ffd166", 60);
+  const list = $("board");
+  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  list.innerHTML = "<li>Loading…</li>";
+  (won ? board.submit(1, "inc").catch(() => null) : Promise.resolve()).then(() => board.top(10)).then(({ entries }) => {
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li>No wins yet. Be the first.</li>";
+  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+}
+function playAgain() { const g = game(); if (!g || !g.res) return; const msg = { g: g.id }; if (isHost()) hostAgain(net.sessionId, msg); else net.send("again", msg); }
+$("again2").onclick = playAgain;
+$("look").onclick = () => { closedFor = game()?.id ?? -1; };
+$("act").onclick = () => {
+  const g = game();
+  if (!g) return;
+  if (g.res) return playAgain();
+  if (performance.now() - resign > 3000) { resign = performance.now(); return; }
+  resign = 0;
+  if (isHost()) hostResign(net.sessionId, { g: g.id }); else net.send("resign", { g: g.id });
+};
+
+// ── INPUT / LOOP ────────────────────────────────────────────────────────────────────
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+/** The square under the pointer: a piece you can select or capture first, else the board. */
+function squareAt(x, y) {
+  ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const g = game(), pos = g && position(g.fen);
+  for (const h of ray.intersectObjects(views.filter(Boolean).map((v) => v.g), true)) {
+    const sq = h.object.parent.userData.sq;
+    if (pos && (colorOf(pos.b[sq]) === pos.turn || targets.some((m) => m.t === sq))) return sq;
+  }
+  if (!ray.ray.intersectPlane(floor, hit)) return -1;
+  const f = Math.floor(hit.x + 4), r = Math.floor(4 - hit.z);
+  return f >= 0 && f < 8 && r >= 0 && r < 8 ? r * 8 + f : -1;
+}
+renderer.domElement.addEventListener("pointerdown", (e) => { e.preventDefault(); tapSquare(squareAt(e.clientX, e.clientY)); });
+addEventListener("keydown", (e) => { if (e.key === "Escape") select(-1); });
+document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+/** The camera sits behind your color (white for watchers) and backs off until the board fits. */
+const camAt = new THREE.Vector3(), camGoal = new THREE.Vector3();
+let camAngle = 0;
+function aimCamera(dt, g, now) {
+  const portrait = innerHeight > innerWidth, elev = ATTRACT ? 0.72 : portrait ? 1.08 : 0.98;
+  const want = ATTRACT ? now / 9000 : g && mySeat(g) === "b" ? Math.PI : 0;
+  camAngle += Math.atan2(Math.sin(want - camAngle), Math.cos(want - camAngle)) * Math.min(1, dt * (ATTRACT ? 10 : 3));
+  const vf = THREE.MathUtils.degToRad(camera.fov) / 2, hf = Math.atan(Math.tan(vf) * camera.aspect), room = ATTRACT ? 1 : 1 - 140 / innerHeight;
+  const dist = ATTRACT ? 11 : Math.max(4.9 / Math.tan(hf) + 4.6 * Math.cos(elev), (4.7 * Math.sin(elev) + 0.9 * Math.cos(elev)) / Math.tan(vf * room) + 2.3 * Math.cos(elev));
+  scene.fog.near = dist; scene.fog.far = dist * 2.4;
+  camGoal.set(Math.sin(camAngle) * Math.cos(elev) * dist, Math.sin(elev) * dist, Math.cos(camAngle) * Math.cos(elev) * dist);
+  if (!camAt.lengthSq()) camAt.copy(camGoal);
+  camAt.lerp(camGoal, Math.min(1, dt * 4));
+  camera.position.copy(camAt); camera.lookAt(0, ATTRACT ? -0.4 : -0.2, 0);
+}
+const shown = { id: -1, fen: "" };
+/** What the board shows: the game in state, or my move while it is on its way to the host. */
+function shownFen() {
+  const g = game();
+  if (pending && (pending.fen !== g.fen || performance.now() - pending.at > 4000)) pending = null;
+  return pending ? pending.next : g.fen;
+}
+function syncBoard(g) {
+  if (shown.id !== g.id) { selected = -1; select(-1); pending = null; closedFor = -1; if (shown.id >= 0 && mySeat(g)) toast(`New game · you play ${colorName(mySeat(g)).toLowerCase()}`); }
+  const fen = shownFen(), last = pending ? pending.last : g.last;
+  if (fen === shown.fen && shown.id === g.id) return;
+  const animate = shown.id === g.id;
+  shown.id = g.id; shown.fen = fen;
+  showPosition(fen, last, animate);
+  if (selected >= 0) select(-1);
+  putMark(marks.from, last ? sqOf(last.slice(0, 2)) : -1); putMark(marks.to, last ? sqOf(last.slice(2, 4)) : -1);
+  const pos = position(fen);
+  putMark(marks.check, inCheck(pos) ? kingOf(pos.b, pos.turn) : -1, 0.007);
+}
+
+let myName = "", myColor = COLORS[0], last = performance.now(), lastHb = 0, lastHud = 0;
+try { myName = localStorage.getItem("mpa-name") || ""; } catch {}
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+if (!myName) { myName = pickOne(NAME_A) + " " + pickOne(NAME_B); try { localStorage.setItem("mpa-name", myName); } catch {} }
+if (ATTRACT) { Object.assign(CONFIG, { botThinkMs: 420, resultsMs: 2500, botNoise: 60 }); $("net").textContent = ""; }
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); }
+  if (isHost()) hostTick();
+  const g = game();
+  if (g) {
+    syncBoard(g);
+    if (now - lastHud > 100) { lastHud = now; hud(g); }
+    const sel = selected >= 0 && views[selected];
+    if (sel && !anims.some((a) => a.v === sel)) sel.g.position.y = 0.14 + Math.sin(now / 180) * 0.04;
+    marks.check.material.opacity = 0.6 + Math.sin(now / 160) * 0.3;
+  }
+  tickPieces(now, dt);
+  aimCamera(dt, g, now);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+(async function start() {
+  net = await connect();
+  net.onState((st) => { S = st; });
+  net.on("move", (m, from) => { if (isHost() && m) hostMove(from, m); });
+  net.on("resign", (m, from) => { if (isHost() && m) hostResign(from, m); });
+  net.on("again", (m, from) => { if (isHost() && m) hostAgain(from, m); });
+  net.onDisconnect(() => { dropped = true; $("net").textContent = "Reconnecting…"; });
+  net.onReconnect(() => { dropped = false; });
+  if (!net.offline && typeof MP !== "undefined") board = MP.auth({ key: MP_CONNECT.key, apiUrl: MP_CONNECT.apiUrl }).leaderboard(CONFIG.board);
+  const takenColors = new Set(Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([, p]) => p.c));
+  myColor = COLORS.find((c) => !takenColors.has(c)) || COLORS[Math.floor(Math.random() * COLORS.length)];
+  net.me.set({ n: myName, c: myColor, hb: Date.now() });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

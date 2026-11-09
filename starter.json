@@ -1,0 +1,21 @@
+{
+  "name": "Chess",
+  "genre": "board",
+  "dim": "3D",
+  "mode": "Turn-based",
+  "players": "2",
+  "hook": "Real chess on a 3D board. Illegal moves are refused.",
+  "how": "Standard chess with every rule: check, mate, castling, en passant, promotion and the draw rules. The first two players take the seats; anyone else watches. Alone? A bot plays the other side.",
+  "controls": "Click or tap a piece, then one of its dots",
+  "uses": [
+    ["Host-run rules", "The host's browser checks every move; if it leaves, the next player takes over."],
+    ["Bots", "A bot takes any empty seat, so you can play alone, and a friend who joins takes the bot's side."],
+    ["Live sync", "Players and watchers see the same board; the game carries on if someone reloads while another player stays."],
+    ["Leaderboard", "Most wins, shown after every game."]
+  ],
+  "ideas": [
+    "Add a 5-minute clock",
+    "Add chat for people watching",
+    "Make the pieces animals"
+  ]
+}
