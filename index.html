@@ -35,7 +35,7 @@
   #promo button { width: 64px; height: 64px; border-radius: 14px; border: 0; background: #f4efe6; font-size: 40px; cursor: pointer; }
   #over { position: fixed; inset: 0; display: grid; place-items: center; background: #0007; }
   #over[hidden], #promo[hidden], #act[hidden] { display: none; }
-  .card { width: min(340px, 88vw); max-height: 84vh; overflow: auto; padding: 20px; border-radius: 18px; background: #161d2e; border: 1px solid #ffffff22; text-align: center; }
+  .card { box-sizing: border-box; width: min(382px, calc(100vw - 32px)); max-height: 84vh; overflow: auto; padding: 20px; border-radius: 18px; background: #161d2e; border: 1px solid #ffffff22; text-align: center; }
   .card h2 { margin: 0; font-size: 26px; } .card p { margin: 4px 0 12px; opacity: .8; }
   .card h3 { margin: 6px 0 4px; font-size: 13px; color: #ffd166; text-align: left; }
   .card ol { text-align: left; margin: 0 0 14px; padding-left: 24px; font-size: 14px; min-height: 30px; }
@@ -764,8 +764,8 @@ if (!myName) { myName = pickOne(NAME_A) + " " + pickOne(NAME_B); try { localStor
 if (ATTRACT) { Object.assign(CONFIG, { botThinkMs: 420, resultsMs: 2500, botNoise: 60 }); $("net").textContent = ""; }
 
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); }
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // never negative: the first frame can be stamped before `last`
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
   if (isHost()) hostTick();
   const g = game();
   if (g) {
@@ -779,6 +779,15 @@ function frame(now) {
   aimCamera(dt, g, now);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
+}
+
+/** Two players picked the same color at once (the joiner's first state can be empty): the later sessionId picks again.
+ *  (The bot's ring color isn't in COLORS, so a player can never share it.) */
+function fixColor() {
+  const others = Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId);
+  if (!others.some(([id, p]) => p.c === myColor && id < net.sessionId)) return;
+  const taken = new Set(others.map(([, p]) => p.c));
+  myColor = COLORS.find((c) => !taken.has(c)) || myColor; net.me.set("c", myColor);
 }
 
 (async function start() {
