@@ -764,6 +764,7 @@ if (!myName) { myName = pickOne(NAME_A) + " " + pickOne(NAME_B); try { localStor
 if (ATTRACT) { Object.assign(CONFIG, { botThinkMs: 420, resultsMs: 2500, botNoise: 60 }); $("net").textContent = ""; }
 
 function frame(now) {
+  requestAnimationFrame(frame);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // never negative: the first frame can be stamped before `last`
   if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
   if (isHost()) hostTick();
@@ -778,7 +779,6 @@ function frame(now) {
   tickPieces(now, dt);
   aimCamera(dt, g, now);
   renderer.render(scene, camera);
-  requestAnimationFrame(frame);
 }
 
 /** Two players picked the same color at once (the joiner's first state can be empty): the later sessionId picks again.
