@@ -40,6 +40,7 @@
   .card h3 { margin: 6px 0 4px; font-size: 13px; color: #ffd166; text-align: left; }
   .card ol { text-align: left; margin: 0 0 14px; padding-left: 24px; font-size: 14px; min-height: 30px; }
   .card li span { float: right; }
+  .card li.note { list-style: none; margin-left: -24px; opacity: .75; } /* a status line, not a numbered entry */
   .card button { width: 100%; min-height: 48px; border-radius: 12px; border: 0; font: 700 16px system-ui, sans-serif; cursor: pointer; margin-top: 8px; }
   #again2 { background: #ffd166; color: #2a1d00; } #look { background: #ffffff1a; color: #fff; }
   .hide { display: none !important; }
@@ -58,7 +59,7 @@
 <div id="promo" hidden><div><button data-p="q">♕</button><button data-p="r">♖</button><button data-p="b">♗</button><button data-p="n">♘</button></div></div>
 <div id="over" hidden><div class="card">
   <h2 id="overTitle"></h2><p id="overWhy"></p>
-  <h3>Most wins</h3><ol id="board"><li>Loading…</li></ol>
+  <h3>Most wins</h3><ol id="board"><li class="note">Loading…</li></ol>
   <button id="again2">Play again</button><button id="look">Look at the board</button>
 </div></div>
 <script type="module">
@@ -69,7 +70,7 @@
  *   CONFIG ........ the bot, timings, colors, the leaderboard
  *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host
  *   RULES ......... the chess rules: FEN, legal moves, check, mate, draws, move names
- *   BOT ........... how the bot picks a move (2 moves deep + captures)
+ *   BOT ........... how the bot picks a move (2 moves deep + captures; no repetition draw when ahead)
  *   GAME (HOST) ... seats, checking and applying moves, bot turns, results.
  *                   Only the host writes the shared `game` field.
  *   SCENE ......... renderer, lights, the board and its square highlights
@@ -286,7 +287,8 @@ function repKey(fen) { let h = 2166136261; for (const ch of fen.split(" ").slice
 function outcome(pos, rep) {
   if (!legalMoves(pos).length) return inCheck(pos) ? { res: other(pos.turn), why: "Checkmate" } : { res: "d", why: "Stalemate" };
   const rest = pos.b.filter((p) => p && p.toLowerCase() !== "k");
-  if (!rest.length || (rest.length === 1 && "nb".includes(rest[0].toLowerCase()))) return { res: "d", why: "Not enough pieces to mate" };
+  const bishopsOnOneColor = rest.length && rest.every((p) => p.toLowerCase() === "b") && new Set(pos.b.map((p, s) => (p && p.toLowerCase() === "b" ? ((s & 7) + (s >> 3)) % 2 : -1)).filter((c) => c >= 0)).size === 1;
+  if (!rest.length || (rest.length === 1 && "nb".includes(rest[0].toLowerCase())) || bishopsOnOneColor) return { res: "d", why: "Not enough pieces to mate" };
   if (pos.half >= 100) return { res: "d", why: "Fifty moves without a capture" };
   if (rep.filter((k) => k === rep[rep.length - 1]).length >= 3) return { res: "d", why: "Same position three times" };
   return null;
@@ -337,10 +339,14 @@ function captures(pos, alpha, beta, d, ply) {
   }
   return alpha;
 }
-function botMove(pos) {
+/** The bot's move. `rep` is the game's repetition list: a move that repeats a position for the third
+ *  time is a draw (score 0), so a bot that is ahead plays on instead of repeating checks forever. */
+function botMove(pos, rep = []) {
   let best = null, bestScore = -Infinity;
   for (const m of legalMoves(pos)) {
-    const s = -negamax(play(pos, m), CONFIG.botDepth - 1, -Infinity, Infinity, 1) + Math.random() * CONFIG.botNoise;
+    const next = play(pos, m), key = next.half ? repKey(toFen(next)) : "";
+    const draw = key && rep.filter((k) => k === key).length >= 2;
+    const s = (draw ? 0 : -negamax(next, CONFIG.botDepth - 1, -Infinity, Infinity, 1)) + Math.random() * CONFIG.botNoise;
     if (s > bestScore) { bestScore = s; best = m; }
   }
   return best && { ...best, pr: best.pr ? "q" : "" };
@@ -356,7 +362,7 @@ function game() {
   return host.last && isHost() && (!g || host.last.v > g.v) ? host.last : g;
 }
 function writeGame(g) { g = { ...g, v: (game()?.v ?? 0) + 1 }; host.last = g; net.setShared("game", JSON.stringify(g)); return g; }
-const freshGame = (id, w, b) => ({ id, fen: ATTRACT ? CONFIG.attractFen : START, ply: 0, last: "", san: "", w, b, at: Date.now(), res: "", why: "", endsAt: 0, rep: [] });
+const freshGame = (id, w, b) => { const fen = ATTRACT ? CONFIG.attractFen : START; return { id, fen, ply: 0, last: "", san: "", w, b, at: Date.now(), res: "", why: "", endsAt: 0, rep: [repKey(fen)] }; }; // rep counts the starting position too
 
 /** Gone players lose their seat to the bot; waiting players take a bot's seat. */
 function fixSeats(g) {
@@ -404,7 +410,7 @@ function hostTick() {
   if (g.res) { if (Date.now() > g.endsAt) writeGame(freshGame(g.id + 1, g.b, g.w)); return; }
   const pos = position(g.fen);
   if (g[pos.turn] === "bot" && Date.now() > g.at + CONFIG.botThinkMs) {
-    const m = botMove(pos);
+    const m = botMove(pos, g.rep);
     if (m) applyMove(g, m);
   }
 }
@@ -615,7 +621,7 @@ function tapSquare(sq) {
 }
 function askPromotion(moves) {
   $("promo").hidden = false;
-  for (const b of $("promo").querySelectorAll("button")) b.onclick = () => { $("promo").hidden = true; sendMove(moves.find((m) => m.pr === b.dataset.p)); };
+  for (const b of $("promo").querySelectorAll("button")) b.onclick = (e) => { e.stopPropagation(); $("promo").hidden = true; sendMove(moves.find((m) => m.pr === b.dataset.p)); };
 }
 function sendMove(m) {
   const g = game(), msg = { g: g.id, ply: g.ply, f: m.f, t: m.t, pr: m.pr || "" };
@@ -670,6 +676,7 @@ function hud(g) {
   // the action button: resign during the game, play again after it
   const act = $("act");
   act.hidden = !side;
+  if (!myTurn(g)) $("promo").hidden = true; // the game ended (or a new one began) while choosing a promotion
   if (g.res) { act.textContent = "Play again"; act.className = "go"; }
   else { act.textContent = now - resign < 3000 ? "Tap to confirm" : "Resign"; act.className = now - resign < 3000 ? "warn" : ""; }
   // results card
@@ -686,14 +693,15 @@ function showResults(g, side) {
   $("again2").classList.toggle("hide", !side);
   if (won) burst(new THREE.Vector3(0, 0.5, 0), "#ffd166", 60);
   const list = $("board");
-  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
-  list.innerHTML = "<li>Loading…</li>";
+  if (!board) { list.innerHTML = `<li class="note">Leaderboards need a connection.</li>`; return; }
+  list.innerHTML = `<li class="note">Loading…</li>`;
   (won ? board.submit(1, "inc").catch(() => null) : Promise.resolve()).then(() => board.top(10)).then(({ entries }) => {
-    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li>No wins yet. Be the first.</li>";
-  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : `<li class="note">No wins yet. Be the first.</li>`;
+  }).catch(() => { list.innerHTML = `<li class="note">Couldn't load the leaderboard.</li>`; });
 }
 function playAgain() { const g = game(); if (!g || !g.res) return; const msg = { g: g.id }; if (isHost()) hostAgain(net.sessionId, msg); else net.send("again", msg); }
 $("again2").onclick = playAgain;
+$("promo").onclick = () => { $("promo").hidden = true; select(-1); }; // tap outside the four pieces (or Escape): changed my mind
 $("look").onclick = () => { closedFor = game()?.id ?? -1; };
 $("act").onclick = () => {
   const g = game();
@@ -719,8 +727,9 @@ function squareAt(x, y) {
   const f = Math.floor(hit.x + 4), r = Math.floor(4 - hit.z);
   return f >= 0 && f < 8 && r >= 0 && r < 8 ? r * 8 + f : -1;
 }
-renderer.domElement.addEventListener("pointerdown", (e) => { e.preventDefault(); tapSquare(squareAt(e.clientX, e.clientY)); });
-addEventListener("keydown", (e) => { if (e.key === "Escape") select(-1); });
+renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault()); // right-click: no browser menu over the board
+renderer.domElement.addEventListener("pointerdown", (e) => { e.preventDefault(); if (e.button > 0) return; tapSquare(squareAt(e.clientX, e.clientY)); }); // main button or a finger only
+addEventListener("keydown", (e) => { if (e.key === "Escape") { $("promo").hidden = true; select(-1); } });
 document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
 
 /** The camera sits behind your color (white for watchers) and backs off until the board fits. */
